@@ -32,3 +32,94 @@ Después visitar `http://localhost:8000` en el navegador. El uso de localhost so
 ### Responsive
 
 El estilo parte de celular y agrega estos puntos de quiebre: `620px` para móvil amplio, `900px` para tableta y el diseño de escritorio desde `901px`. El panel de escritorio usa cuatro tarjetas de zona en una fila; tableta usa dos columnas y móvil una.
+
+## Backend
+
+El servidor corre en Python 3.11 o superior con FastAPI y Uvicorn. Se conecta a PostgreSQL 15 o superior y sirve tanto la API REST como la aplicación web estática.
+
+### Prerrequisitos
+
+- Python 3.11+
+- PostgreSQL 15+
+- El cliente `psql` disponible en la terminal
+
+### 1. Crear la base de datos y el usuario
+
+Ejecutar como superusuario de PostgreSQL (una sola vez):
+
+```bash
+sudo -u postgres psql -c "CREATE ROLE riego_user LOGIN PASSWORD 'tu_contraseña';"
+sudo -u postgres createdb -O riego_user riego_iot
+sudo -u postgres psql -d riego_iot -c "GRANT ALL ON SCHEMA public TO riego_user;"
+```
+
+### 2. Cargar los scripts SQL
+
+El orden importa: primero el DDL y luego los datos iniciales.
+
+```bash
+psql -h localhost -U riego_user -d riego_iot -f backend/sql/schema.sql
+psql -h localhost -U riego_user -d riego_iot -f backend/sql/datos_iniciales.sql
+```
+
+### 3. Crear el archivo .env
+
+```bash
+cp .env.example .env
+```
+
+Editar `.env` con los datos reales de conexión:
+
+```
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=riego_iot
+DB_USER=riego_user
+DB_PASSWORD=tu_contraseña
+```
+
+El archivo `.env` nunca se sube al repositorio (está en `.gitignore`).
+
+### 4. Crear el entorno virtual e instalar dependencias
+
+```bash
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r backend/requirements.txt
+```
+
+### 5. Arrancar el servidor
+
+```bash
+cd backend
+uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+Agregar `--reload` durante el desarrollo para que el servidor se reinicie al guardar cambios.
+
+El servidor queda disponible en:
+- **Laptop:** `http://localhost:8000`
+- **Celular u otro dispositivo en la misma red:** `http://<IP-de-la-laptop>:8000`
+
+Para conocer la IP local de la laptop: `ip a` en Linux/Mac o `ipconfig` en Windows.
+
+### 6. Abrir el puerto en el firewall (Windows)
+
+Si la laptop usa Windows y el celular no puede conectarse, agregar una regla de entrada:
+
+```
+Panel de control → Firewall de Windows Defender → Reglas de entrada
+→ Nueva regla → Puerto → TCP 8000 → Permitir la conexión
+```
+
+### 7. Verificar que el servidor funciona
+
+```bash
+curl http://localhost:8000/api/salud
+# → {"estado":"ok","base_de_datos":"conectada"}
+```
+
+La documentación interactiva de la API está en `http://localhost:8000/docs`.
+
+---
+
