@@ -13,25 +13,26 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Request
+from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import config
 import db
+from routers import lecturas, zonas, plantas, alertas
+from scheduler import revisar_nodos_sin_reporte
 
-# ── Logging básico ───────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-# ── Scheduler (los jobs se agregan en Tareas 2 y 3) ─────────────────────────
 scheduler = AsyncIOScheduler()
 
 
-# ── Lifespan ─────────────────────────────────────────────────────────────────
+# ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Abriendo pool de conexiones...")
@@ -41,8 +42,15 @@ async def lifespan(app: FastAPI):
     config.cfg.update(await config.load_cfg(db.pool))
     logger.info("Configuración cargada: %s", config.cfg)
 
+    scheduler.add_job(
+        revisar_nodos_sin_reporte,
+        trigger="interval",
+        minutes=1,
+        id="nodos_sin_reporte",
+        replace_existing=True,
+    )
     scheduler.start()
-    logger.info("Scheduler iniciado.")
+    logger.info("Scheduler iniciado (job nodos_sin_reporte cada 1 min).")
 
     yield
 
@@ -56,24 +64,14 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Sistema IoT de riego",
     description="API del sistema de monitoreo de plantas con nodos ESP32.",
-    version="0.1.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
 
 # ── Ruta de salud ─────────────────────────────────────────────────────────────
-@app.get(
-    "/api/salud",
-    summary="Estado del servidor y la base de datos",
-    tags=["Sistema"],
-)
+@app.get("/api/salud", summary="Estado del servidor y la base de datos", tags=["Sistema"])
 async def salud():
-    """
-    Verifica que el servidor está en pie y puede consultar la base de datos.
-
-    - **200** `{"estado": "ok", "base_de_datos": "conectada"}`
-    - **503** `{"estado": "error", "base_de_datos": "sin conexión", "detalle": "..."}`
-    """
     try:
         async with db.pool.connection() as conn:
             await conn.execute("SELECT 1")
@@ -82,31 +80,58 @@ async def salud():
         logger.error("Fallo en /api/salud: %s", exc)
         return JSONResponse(
             status_code=503,
-            content={
-                "estado": "error",
-                "base_de_datos": "sin conexión",
-                "detalle": "No se pudo ejecutar una consulta de prueba.",
-            },
+            content={"estado": "error", "base_de_datos": "sin conexión",
+                     "detalle": "No se pudo ejecutar una consulta de prueba."},
         )
 
 
+# ── Routers ───────────────────────────────────────────────────────────────────
+app.include_router(lecturas.router)
+app.include_router(zonas.router)
+app.include_router(plantas.router)
+app.include_router(alertas.router)
+
+
 # ── Manejadores de error globales ─────────────────────────────────────────────
-@app.exception_handler(404)
-async def not_found_handler(request, exc):
-    return JSONResponse(
-        status_code=404,
-        content={"detalle": "Recurso no encontrado."},
-    )
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    detalle = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    return JSONResponse(status_code=exc.status_code, content={"detalle": detalle})
 
 
-@app.exception_handler(405)
-async def method_not_allowed_handler(request, exc):
-    return JSONResponse(
-        status_code=405,
-        content={"detalle": "Método no permitido."},
-    )
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    errors = exc.errors()
+    detalle = "; ".join(
+        e.get("msg", "valor inválido").replace("Value error, ", "")
+        for e in errors
+    ) or "Los datos enviados no son válidos."
+
+    # Si el error viene de /api/lecturas, abrir alerta lectura_invalida
+    if request.url.path == "/api/lecturas":
+        try:
+            body = await request.json()
+            mac = str(body.get("mac", "")).upper().strip()
+            if mac and db.pool:
+                async with db.pool.connection() as conn:
+                    row = await (await conn.execute(
+                        "SELECT id_zona FROM nodo WHERE UPPER(mac) = %s", (mac,)
+                    )).fetchone()
+                    if row:
+                        await conn.execute(
+                            """
+                            INSERT INTO alerta (id_zona, tipo, abierta, timestamp_apertura)
+                            VALUES (%s, 'lectura_invalida', TRUE, NOW())
+                            ON CONFLICT DO NOTHING
+                            """,
+                            (row[0],),
+                        )
+        except Exception as alert_exc:
+            logger.error("No se pudo abrir alerta lectura_invalida: %s", alert_exc)
+
+    return JSONResponse(status_code=422, content={"detalle": detalle})
 
 
-# ── Archivos estáticos (debe ir DESPUÉS de las rutas /api/) ──────────────────
+# ── Archivos estáticos (DESPUÉS de las rutas /api/) ───────────────────────────
 _static_dir = Path(__file__).parent.parent / "static"
 app.mount("/", StaticFiles(directory=str(_static_dir), html=True), name="static")

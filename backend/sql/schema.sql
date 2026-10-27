@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS planta (
     imagen_ruta        TEXT,
     imagen_credito     TEXT,
     activa             BOOLEAN  NOT NULL DEFAULT TRUE,
-    CONSTRAINT humedad_rango_valido CHECK (humedad_max > humedad_min)
+    CONSTRAINT humedad_rango_valido CHECK (humedad_max > humedad_min),
+    CONSTRAINT planta_nombre_cientifico_uq UNIQUE (nombre_cientifico)
 );
 
 -- ------------------------------------------------------------
@@ -63,7 +64,9 @@ CREATE TABLE IF NOT EXISTS planta (
 CREATE TABLE IF NOT EXISTS zona (
     id_zona   SERIAL        PRIMARY KEY,
     nombre    TEXT          NOT NULL UNIQUE,
-    area_m2   NUMERIC(6,2)
+    area_m2   NUMERIC(6,2),
+    estado    TEXT          NOT NULL DEFAULT 'activa'
+                  CHECK (estado IN ('activa', 'pausada'))
 );
 
 -- ------------------------------------------------------------
@@ -116,6 +119,7 @@ CREATE TABLE IF NOT EXISTS lectura (
     id_lectura            BIGSERIAL    PRIMARY KEY,
     id_nodo               INTEGER      NOT NULL REFERENCES nodo(id_nodo),
     timestamp             TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    adc_suelo             INTEGER      NOT NULL,
     humedad_pct           NUMERIC(5,2) NOT NULL
                               CHECK (humedad_pct >= 0 AND humedad_pct <= 100),
     temperatura_ambiente  NUMERIC(5,2),
@@ -141,7 +145,8 @@ CREATE TABLE IF NOT EXISTS alerta (
                                 'humedad_baja',
                                 'sobrehumedad',
                                 'sin_reporte',
-                                'bateria_baja'
+                                'bateria_baja',
+                                'lectura_invalida'
                             )),
     abierta             BOOLEAN      NOT NULL DEFAULT TRUE,
     timestamp_apertura  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
