@@ -1,21 +1,72 @@
-# Variables de entorno
-.env
+# ============================================================
+# .gitignore — Sistema de Control de Riego IoT
+# ============================================================
 
-# Entornos virtuales
+# 1. Variables de entorno y secretos (NUNCA subir credenciales)
+.env
+.env.*
+!.env.example
+*.env
+
+# 2. Entornos virtuales
 .venv/
 venv/
+env/
+ENV/
+env.bak/
+venv.bak/
 
-# Caché de Python
+# 3. Caché y compilados de Python
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# pytest
+# 4. Logs y bases de datos locales temporales
+*.log
+*.sqlite
+*.sqlite3
+*.db
+
+# 5. Pruebas y cobertura
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
+.tox/
+.nox/
 
-# Editores
+# 6. Editores de código e IDEs
 .vscode/
 .idea/
 *.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# 7. Archivos de sistema operativo
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
