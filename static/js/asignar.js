@@ -12,11 +12,11 @@ const createElement = (tag, cls, text) => {
 const createPlantOption = (plant, onAssign) => {
   const article = createElement('article', 'plant-option');
   const image = document.createElement('img');
-  image.src = plant.imagen || 'assets/plant-empty.svg';
-  image.alt = plant.nombre || plant.planta || '';
+  image.src = plant.imagen_ruta || plant.imagen || 'assets/plant-empty.svg';
+  image.alt = plant.nombre_comun || plant.nombre || plant.planta || '';
   image.width = 180; image.height = 110;
   const content = document.createElement('div');
-  const title = createElement('h2', '', plant.nombre || plant.planta);
+  const title = createElement('h2', '', plant.nombre_comun || plant.nombre || plant.planta);
   const detail = createElement('p', '', `Rango ${plant.humedad_min ?? plant.rango?.[0] ?? '?'}–${plant.humedad_max ?? plant.rango?.[1] ?? '?'} %`);
   const button = createElement('button', 'button button--primary', 'Asignar');
   button.type = 'button';
